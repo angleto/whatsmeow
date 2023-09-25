@@ -82,16 +82,25 @@ const (
 
 func (s *SQLStore) PutIdentity(address string, key [32]byte) error {
 	_, err := s.dbPool.Query(context.Background(), putIdentityQuery, s.businessId, s.JID, address, key[:])
+	if err != nil {
+		s.log.Errorf("PutIdentity contact: %v", err)
+	}
 	return err
 }
 
 func (s *SQLStore) DeleteAllIdentities(phone string) error {
 	_, err := s.dbPool.Query(context.Background(), deleteAllIdentitiesQuery, s.businessId, s.JID, phone+":%")
+	if err != nil {
+		s.log.Errorf("DeleteAllIdentities contact: %v", err)
+	}
 	return err
 }
 
 func (s *SQLStore) DeleteIdentity(address string) error {
 	_, err := s.dbPool.Query(context.Background(), deleteAllIdentitiesQuery, s.businessId, s.JID, address)
+	if err != nil {
+		s.log.Errorf("DeleteIdentity contact: %v", err)
+	}
 	return err
 }
 
@@ -125,6 +134,8 @@ func (s *SQLStore) GetSession(address string) (session []byte, err error) {
 	err = s.dbPool.QueryRow(context.Background(), getSessionQuery, s.businessId, s.JID, address).Scan(&session)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
+	} else if err != nil {
+		s.log.Errorf("GetSession contact: %v", err)
 	}
 	return
 }
@@ -133,22 +144,33 @@ func (s *SQLStore) HasSession(address string) (has bool, err error) {
 	err = s.dbPool.QueryRow(context.Background(), hasSessionQuery, s.businessId, s.JID, address).Scan(&has)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
+	} else if err != nil {
+		s.log.Errorf("HasSession contact: %v", err)
 	}
 	return
 }
 
 func (s *SQLStore) PutSession(address string, session []byte) error {
 	_, err := s.dbPool.Query(context.Background(), putSessionQuery, s.businessId, s.JID, address, session)
+	if err != nil {
+		s.log.Errorf("PutSession contact: %v", err)
+	}
 	return err
 }
 
 func (s *SQLStore) DeleteAllSessions(phone string) error {
 	_, err := s.dbPool.Query(context.Background(), deleteAllSessionsQuery, s.businessId, s.JID, phone+":%")
+	if err != nil {
+		s.log.Errorf("DeleteAllSessions contact: %v", err)
+	}
 	return err
 }
 
 func (s *SQLStore) DeleteSession(address string) error {
 	_, err := s.dbPool.Query(context.Background(), deleteSessionQuery, s.businessId, s.JID, address)
+	if err != nil {
+		s.log.Errorf("DeleteSession contact: %v", err)
+	}
 	return err
 }
 
@@ -165,6 +187,9 @@ const (
 func (s *SQLStore) genOnePreKey(id uint32, markUploaded bool) (*keys.PreKey, error) {
 	key := keys.NewPreKey(id)
 	_, err := s.dbPool.Query(context.Background(), insertPreKeyQuery, s.businessId, s.JID, key.KeyID, key.Priv[:], markUploaded)
+	if err != nil {
+		s.log.Errorf("genOnePreKey contact: %v", err)
+	}
 	return key, err
 }
 
@@ -272,6 +297,9 @@ const (
 
 func (s *SQLStore) PutSenderKey(group, user string, session []byte) error {
 	_, err := s.dbPool.Query(context.Background(), putSenderKeyQuery, s.businessId, s.JID, group, user, session)
+	if err != nil {
+		s.log.Errorf("PutSenderKey contact: %v", err)
+	}
 	return err
 }
 
@@ -279,6 +307,8 @@ func (s *SQLStore) GetSenderKey(group, user string) (key []byte, err error) {
 	err = s.dbPool.QueryRow(context.Background(), getSenderKeyQuery, s.businessId, s.JID, group, user).Scan(&key)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
+	} else if err != nil {
+		s.log.Errorf("GetSenderKey contact: %v", err)
 	}
 	return
 }
@@ -296,6 +326,9 @@ const (
 
 func (s *SQLStore) PutAppStateSyncKey(id []byte, key store.AppStateSyncKey) error {
 	_, err := s.dbPool.Query(context.Background(), putAppStateSyncKeyQuery, s.businessId, s.JID, id, key.Data, key.Timestamp, key.Fingerprint)
+	if err != nil {
+		s.log.Errorf("PutAppStateSyncKey contact: %v", err)
+	}
 	return err
 }
 
@@ -303,6 +336,9 @@ func (s *SQLStore) GetAppStateSyncKey(id []byte) (*store.AppStateSyncKey, error)
 	var key store.AppStateSyncKey
 	err := s.dbPool.QueryRow(context.Background(), getAppStateSyncKeyQuery, s.businessId, s.JID, id).Scan(&key.Data, &key.Timestamp, &key.Fingerprint)
 	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		s.log.Errorf("GetAppStateSyncKey contact: %v", err)
 		return nil, nil
 	}
 	return &key, err
@@ -312,6 +348,9 @@ func (s *SQLStore) GetLatestAppStateSyncKeyID() ([]byte, error) {
 	var keyID []byte
 	err := s.dbPool.QueryRow(context.Background(), getLatestAppStateSyncKeyIDQuery, s.businessId, s.JID).Scan(&keyID)
 	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		s.log.Errorf("GetLatestAppStateSyncKeyID contact: %v", err)
 		return nil, nil
 	}
 	return keyID, err
@@ -332,6 +371,9 @@ const (
 
 func (s *SQLStore) PutAppStateVersion(name string, version uint64, hash [128]byte) error {
 	_, err := s.dbPool.Query(context.Background(), putAppStateVersionQuery, s.businessId, s.JID, name, version, hash[:])
+	if err != nil {
+		s.log.Errorf("PutAppStateVersion contact: %v", err)
+	}
 	return err
 }
 
@@ -342,6 +384,7 @@ func (s *SQLStore) GetAppStateVersion(name string) (version uint64, hash [128]by
 		// version will be 0 and hash will be an empty array, which is the correct initial state
 		err = nil
 	} else if err != nil {
+		s.log.Errorf("GetAppStateVersion contact: %v", err)
 		// There's an error, just return it
 	} else if len(uncheckedHash) != 128 {
 		// This shouldn't happen
@@ -355,6 +398,9 @@ func (s *SQLStore) GetAppStateVersion(name string) (version uint64, hash [128]by
 
 func (s *SQLStore) DeleteAppStateVersion(name string) error {
 	_, err := s.dbPool.Query(context.Background(), deleteAppStateVersionQuery, s.businessId, s.JID, name)
+	if err != nil {
+		s.log.Errorf("DeleteAppStateVersion contact: %v", err)
+	}
 	return err
 }
 
@@ -463,6 +509,7 @@ func (s *SQLStore) PutPushName(user types.JID, pushName string) (bool, string, e
 	if cached.PushName != pushName {
 		_, err = s.dbPool.Query(context.Background(), putPushNameQuery, s.businessId, s.JID, user, pushName)
 		if err != nil {
+			s.log.Errorf("PutPushName contact: %v", err)
 			return false, "", err
 		}
 		previousName := cached.PushName
@@ -479,6 +526,7 @@ func (s *SQLStore) PutBusinessName(user types.JID, businessName string) (bool, s
 
 	cached, err := s.getContact(user)
 	if err != nil {
+		s.log.Errorf("PutBusinessName contact: %v", err)
 		return false, "", err
 	}
 	if cached.BusinessName != businessName {
@@ -500,6 +548,7 @@ func (s *SQLStore) PutContactName(user types.JID, firstName, fullName string) er
 
 	cached, err := s.getContact(user)
 	if err != nil {
+		s.log.Errorf("PutContactName contact: %v", err)
 		return err
 	}
 	if cached.FirstName != firstName || cached.FullName != fullName {
@@ -526,7 +575,7 @@ func (s *SQLStore) putContactNamesBatch(tx pgx.Tx, contacts []store.ContactEntry
 	handledContacts := make(map[types.JID]struct{}, len(contacts))
 	for _, contact := range contacts {
 		if contact.JID.IsEmpty() {
-			s.log.Warnf("Empty contact info in mass insert: %+v", contact)
+			s.log.Warnf("Empty contact: %+v", contact)
 			continue
 		}
 		// The whole query will break if there are duplicates, so make sure there aren't any duplicates
@@ -560,6 +609,7 @@ func (s *SQLStore) PutAllContactNames(contacts []store.ContactEntry) error {
 			}
 			err = s.putContactNamesBatch(tx, contactSlice)
 			if err != nil {
+				s.log.Errorf("PutAllContactNames contact: %v", err)
 				_ = tx.Rollback(context.Background())
 				return err
 			}
@@ -588,6 +638,9 @@ func (s *SQLStore) getContact(user types.JID) (*types.ContactInfo, error) {
 	err := s.dbPool.QueryRow(context.Background(), getContactQuery, s.businessId, s.JID, user).Scan(&first, &full, &push, &business)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
+	} else if err != nil {
+		s.log.Errorf("getContact contact: %v", err)
+		return nil, err
 	}
 	info := &types.ContactInfo{
 		Found:        err == nil,
@@ -605,6 +658,7 @@ func (s *SQLStore) GetContact(user types.JID) (types.ContactInfo, error) {
 	info, err := s.getContact(user)
 	s.contactCacheLock.Unlock()
 	if err != nil {
+		s.log.Errorf("GetContact contact: %v", err)
 		return types.ContactInfo{}, err
 	}
 	return *info, nil
@@ -615,6 +669,7 @@ func (s *SQLStore) GetAllContacts() (map[types.JID]types.ContactInfo, error) {
 	defer s.contactCacheLock.Unlock()
 	rows, err := s.dbPool.Query(context.Background(), getAllContactsQuery, s.businessId, s.JID)
 	if err != nil {
+		s.log.Errorf("GetAllContacts contact: %v", err)
 		return nil, err
 	}
 	output := make(map[types.JID]types.ContactInfo, len(s.contactCache))
@@ -711,6 +766,9 @@ func (s *SQLStore) PutMessageSecrets(inserts []store.MessageSecretInsert) (err e
 
 func (s *SQLStore) PutMessageSecret(chat, sender types.JID, id types.MessageID, secret []byte) (err error) {
 	_, err = s.dbPool.Query(context.Background(), putMsgSecret, s.businessId, s.JID, chat.ToNonAD(), sender.ToNonAD(), id, secret)
+	if err != nil {
+		s.log.Errorf("PutMessageSecret contact: %v", err)
+	}
 	return
 }
 
@@ -718,6 +776,8 @@ func (s *SQLStore) GetMessageSecret(chat, sender types.JID, id types.MessageID) 
 	err = s.dbPool.QueryRow(context.Background(), getMsgSecret, s.businessId, s.JID, chat.ToNonAD(), sender.ToNonAD(), id).Scan(&secret)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = nil
+	} else if err != nil {
+		s.log.Errorf("GetMessageSecret contact: %v", err)
 	}
 	return
 }
@@ -744,6 +804,9 @@ func (s *SQLStore) PutPrivacyTokens(tokens ...store.PrivacyToken) error {
 	}
 	query := strings.ReplaceAll(putPrivacyTokens, "($1, $2, $3, $4, $5)", strings.Join(placeholders, ","))
 	_, err := s.dbPool.Query(context.Background(), query, args...)
+	if err != nil {
+		s.log.Errorf("PutPrivacyTokens contact: %v", err)
+	}
 	return err
 }
 
@@ -755,6 +818,7 @@ func (s *SQLStore) GetPrivacyToken(user types.JID) (*store.PrivacyToken, error) 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	} else if err != nil {
+		s.log.Errorf("GetPrivacyToken contact: %v", err)
 		return nil, err
 	} else {
 		token.Timestamp = time.Unix(ts, 0)
