@@ -200,10 +200,10 @@ type AllStores interface {
 }
 
 type Device struct {
-	Log                   waLog.Logger
-	DatabaseErrorHandler  func(device *Device, action string, attemptIndex int, err error) (retry bool)
+	Log                  waLog.Logger
+	DatabaseErrorHandler func(device *Device, action string, attemptIndex int, err error) (retry bool)
 
-	NoiseKey       *keys.KeyPair
+	NoiseKey *keys.KeyPair
 	IdentityKey    *keys.KeyPair
 	SignedPreKey   *keys.PreKey
 	RegistrationID uint32
@@ -268,3 +268,18 @@ func (device *Device) Delete(ctx context.Context) error {
 	device.LID = types.EmptyJID
 	return nil
 }
+<<<<<<< HEAD
+=======
+
+func (device *Device) GetAltJID(ctx context.Context, jid types.JID) (types.JID, error) {
+	if device == nil {
+		return types.EmptyJID, nil
+	} else if jid.Server == types.DefaultUserServer {
+		return device.LIDs.GetLIDForPN(ctx, jid)
+	} else if jid.Server == types.HiddenUserServer {
+		return device.LIDs.GetPNForLID(ctx, jid)
+	} else {
+		return types.EmptyJID, nil
+	}
+}
+>>>>>>> origin/main
