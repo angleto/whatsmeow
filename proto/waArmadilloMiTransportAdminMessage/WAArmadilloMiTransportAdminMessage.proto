@@ -193,7 +193,6 @@ message MiTransportAdminMessage {
 	message XmatFriendRequestConfirmedEncrypted {
 		optional string otherUserName = 1;
 		optional string isTurnOnCohort = 2;
-		optional string userWhoAcceptedFriendRequest = 3;
 	}
 
 	message XmatDisappearingSetting {

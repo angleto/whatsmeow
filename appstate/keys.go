@@ -126,13 +126,13 @@ func (proc *Processor) GetMissingKeyIDs(ctx context.Context, pl *PatchList) [][]
 		}
 	}
 	if pl.Snapshot != nil {
-		checkMissing(pl.Snapshot.GetKeyID().GetID())
+		checkMissing(pl.Snapshot.GetKeyId().GetId())
 		for _, record := range pl.Snapshot.GetRecords() {
-			checkMissing(record.GetKeyID().GetID())
+			checkMissing(record.GetKeyId().GetId())
 		}
 	}
 	for _, patch := range pl.Patches {
-		checkMissing(patch.GetKeyID().GetID())
+		checkMissing(patch.GetKeyId().GetId())
 	}
 	return missingKeys
 }
