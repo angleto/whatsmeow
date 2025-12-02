@@ -353,7 +353,7 @@ func (tc *TenantCoordinator) reconnectTenant(businessID string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	_, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	err := tenant.Client.Connect()

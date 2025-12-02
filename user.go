@@ -244,7 +244,7 @@ func (cli *Client) GetUserInfo(ctx context.Context, jids []types.JID) (map[types
 	err = cli.Store.LIDs.PutManyLIDMappings(ctx, mappings)
 	if err != nil {
 		// not worth returning on the error, instead just post a log
-		cli.Log.Errorf("Failed to place LID mappings from USync call")
+		cli.Log.Errorf("Failed to place LID mappings from USync call: %v", err)
 	}
 
 	return respData, nil

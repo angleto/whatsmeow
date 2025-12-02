@@ -997,6 +997,7 @@ const (
 					END
 				)
 			)
+	`
 )
 
 func (s *SQLStore) PutMessageSecrets(ctx context.Context, inserts []store.MessageSecretInsert) (err error) {

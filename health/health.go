@@ -10,6 +10,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -371,5 +372,3 @@ func (lc *LivenessChecker) Check(ctx context.Context) ComponentHealth {
 	}
 }
 
-// Helper to add missing import
-import "fmt"
