@@ -10,14 +10,12 @@ package sqlstore
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
-	"go.mau.fi/util/exslices"
 
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
@@ -240,23 +238,31 @@ func (s *CachedLIDMap) PutLIDMapping(ctx context.Context, lid, pn types.JID) err
 func (s *CachedLIDMap) PutManyLIDMappings(ctx context.Context, mappings []store.LIDMapping) error {
 	s.lidCacheLock.Lock()
 	defer s.lidCacheLock.Unlock()
-	mappings = slices.DeleteFunc(mappings, func(mapping store.LIDMapping) bool {
+
+	// Deduplicate by PN - keep the last mapping for each PN to avoid
+	// "duplicate key value violates unique constraint whatsmeow_lid_map_pn_key"
+	// when the same PN maps to different LIDs in the same batch.
+	pnToMapping := make(map[string]store.LIDMapping)
+	for _, mapping := range mappings {
 		if mapping.LID.Server != types.HiddenUserServer || mapping.PN.Server != types.DefaultUserServer {
 			zerolog.Ctx(ctx).Debug().
 				Stringer("entry_lid", mapping.LID).
 				Stringer("entry_pn", mapping.PN).
 				Msg("Ignoring invalid entry in PutManyLIDMappings")
-			return true
+			continue
 		}
 		cachedLID, ok := s.pnToLIDCache[mapping.PN.User]
 		if ok && cachedLID == mapping.LID.User {
-			return true
+			continue
 		}
-		return false
-	})
-	mappings = exslices.DeduplicateUnsortedOverwrite(mappings)
-	if len(mappings) == 0 {
+		pnToMapping[mapping.PN.User] = mapping
+	}
+	if len(pnToMapping) == 0 {
 		return nil
+	}
+	mappings = make([]store.LIDMapping, 0, len(pnToMapping))
+	for _, mapping := range pnToMapping {
+		mappings = append(mappings, mapping)
 	}
 
 	tx, err := s.dbPool.Begin(ctx)
