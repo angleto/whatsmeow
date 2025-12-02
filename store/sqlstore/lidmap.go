@@ -43,11 +43,13 @@ func NewCachedLIDMap(dbPool *pgxpool.Pool, businessId string) *CachedLIDMap {
 }
 
 const (
-	deleteExistingLIDMappingQuery = `DELETE FROM whatsmeow_lid_map WHERE business_id = $1 AND (lid<>$2 AND pn=$3)`
-	putLIDMappingQuery            = `
+	// Delete any row that would conflict with the new mapping (either same LID or same PN)
+	deleteExistingLIDMappingQuery = `DELETE FROM whatsmeow_lid_map WHERE business_id = $1 AND (lid=$2 OR pn=$3)`
+	// After delete, insert should not conflict. Use DO NOTHING as safety for race conditions.
+	putLIDMappingQuery = `
 		INSERT INTO whatsmeow_lid_map (business_id, lid, pn)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (business_id, lid) DO UPDATE SET pn=excluded.pn WHERE whatsmeow_lid_map.pn<>excluded.pn
+		ON CONFLICT DO NOTHING
 	`
 	getLIDForPNQuery       = `SELECT lid FROM whatsmeow_lid_map WHERE business_id=$1 AND pn=$2`
 	getPNForLIDQuery       = `SELECT pn FROM whatsmeow_lid_map WHERE business_id=$1 AND lid=$2`
