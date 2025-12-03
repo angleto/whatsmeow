@@ -1,5 +1,5 @@
--- v0 -> v11 (compatible with v8+): Latest schema
-CREATE TABLE whatsmeow_device (
+-- v0 -> v12 (compatible with v8+): Latest schema for multitenant setup
+CREATE TABLE IF NOT EXISTS whatsmeow_device (
   	business_id TEXT NOT NULL,
 	jid TEXT NOT NULL,
 	lid TEXT,
@@ -30,7 +30,7 @@ CREATE TABLE whatsmeow_device (
 	PRIMARY KEY (business_id, jid)
 );
 
-CREATE TABLE whatsmeow_identity_keys (
+CREATE TABLE IF NOT EXISTS whatsmeow_identity_keys (
     business_id TEXT NOT NULL,
 	our_jid  TEXT,
 	their_id TEXT,
@@ -40,7 +40,7 @@ CREATE TABLE whatsmeow_identity_keys (
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_pre_keys (
+CREATE TABLE IF NOT EXISTS whatsmeow_pre_keys (
 	business_id TEXT NOT NULL,
 	jid      TEXT,
 	key_id   INTEGER          CHECK ( key_id >= 0 AND key_id < 16777216 ),
@@ -51,7 +51,7 @@ CREATE TABLE whatsmeow_pre_keys (
 	FOREIGN KEY (business_id, jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_sessions (
+CREATE TABLE IF NOT EXISTS whatsmeow_sessions (
 	business_id TEXT NOT NULL,
 	our_jid  TEXT,
 	their_id TEXT,
@@ -61,7 +61,7 @@ CREATE TABLE whatsmeow_sessions (
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_sender_keys (
+CREATE TABLE IF NOT EXISTS whatsmeow_sender_keys (
     business_id TEXT NOT NULL,
 	our_jid    TEXT,
 	chat_id    TEXT,
@@ -72,7 +72,7 @@ CREATE TABLE whatsmeow_sender_keys (
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_app_state_sync_keys (
+CREATE TABLE IF NOT EXISTS whatsmeow_app_state_sync_keys (
 	business_id TEXT NOT NULL,
 	jid         TEXT,
 	key_id      bytea,
@@ -84,7 +84,7 @@ CREATE TABLE whatsmeow_app_state_sync_keys (
 	FOREIGN KEY (business_id, jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_app_state_version (
+CREATE TABLE IF NOT EXISTS whatsmeow_app_state_version (
 	business_id TEXT NOT NULL,
 	jid     TEXT,
 	name    TEXT,
@@ -95,7 +95,7 @@ CREATE TABLE whatsmeow_app_state_version (
 	FOREIGN KEY (business_id, jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_app_state_mutation_macs (
+CREATE TABLE IF NOT EXISTS whatsmeow_app_state_mutation_macs (
 	business_id TEXT NOT NULL,
 	jid       TEXT,
 	name      TEXT,
@@ -107,7 +107,7 @@ CREATE TABLE whatsmeow_app_state_mutation_macs (
 	FOREIGN KEY (business_id, jid, name) REFERENCES whatsmeow_app_state_version(business_id, jid, name) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_contacts (
+CREATE TABLE IF NOT EXISTS whatsmeow_contacts (
 	business_id TEXT NOT NULL,
 	our_jid        TEXT,
 	their_jid      TEXT,
@@ -115,21 +115,13 @@ CREATE TABLE whatsmeow_contacts (
 	full_name      TEXT,
 	push_name      TEXT,
 	business_name  TEXT,
-
-	PRIMARY KEY (business_id, our_jid, their_jid),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE whatsmeow_redacted_phones (
-	business_id TEXT NOT NULL,
-	our_jid        TEXT,
-	their_jid      TEXT,
 	redacted_phone TEXT,
+
 	PRIMARY KEY (business_id, our_jid, their_jid),
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_chat_settings (
+CREATE TABLE IF NOT EXISTS whatsmeow_chat_settings (
 	business_id TEXT NOT NULL,
 	our_jid       TEXT,
 	chat_jid      TEXT,
@@ -141,7 +133,7 @@ CREATE TABLE whatsmeow_chat_settings (
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_message_secrets (
+CREATE TABLE IF NOT EXISTS whatsmeow_message_secrets (
 	business_id TEXT NOT NULL,
 	our_jid    TEXT,
 	chat_jid   TEXT,
@@ -153,7 +145,7 @@ CREATE TABLE whatsmeow_message_secrets (
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_privacy_tokens (
+CREATE TABLE IF NOT EXISTS whatsmeow_privacy_tokens (
 	business_id TEXT NOT NULL,
 	our_jid   TEXT,
 	their_jid TEXT,
@@ -163,15 +155,15 @@ CREATE TABLE whatsmeow_privacy_tokens (
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-CREATE TABLE whatsmeow_lid_map (
+CREATE TABLE IF NOT EXISTS whatsmeow_lid_map (
 	business_id TEXT NOT NULL,
-	lid TEXT,
+	lid TEXT NOT NULL,
 	pn  TEXT NOT NULL,
 	PRIMARY KEY (business_id, lid),
 	UNIQUE (business_id, pn)
 );
 
-CREATE TABLE whatsmeow_event_buffer (
+CREATE TABLE IF NOT EXISTS whatsmeow_event_buffer (
 	business_id TEXT NOT NULL,
 	our_jid          TEXT   NOT NULL,
 	ciphertext_hash  bytea  NOT NULL CHECK ( length(ciphertext_hash) = 32 ),
@@ -181,3 +173,23 @@ CREATE TABLE whatsmeow_event_buffer (
 	PRIMARY KEY (business_id, our_jid, ciphertext_hash),
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- Performance indexes for multitenancy
+CREATE INDEX IF NOT EXISTS idx_identity_keys_business ON whatsmeow_identity_keys(business_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_business ON whatsmeow_sessions(business_id);
+CREATE INDEX IF NOT EXISTS idx_pre_keys_business ON whatsmeow_pre_keys(business_id);
+CREATE INDEX IF NOT EXISTS idx_sender_keys_business ON whatsmeow_sender_keys(business_id);
+CREATE INDEX IF NOT EXISTS idx_app_state_sync_keys_business ON whatsmeow_app_state_sync_keys(business_id);
+CREATE INDEX IF NOT EXISTS idx_app_state_version_business ON whatsmeow_app_state_version(business_id);
+CREATE INDEX IF NOT EXISTS idx_app_state_mutation_macs_business ON whatsmeow_app_state_mutation_macs(business_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_business ON whatsmeow_contacts(business_id);
+CREATE INDEX IF NOT EXISTS idx_chat_settings_business ON whatsmeow_chat_settings(business_id);
+CREATE INDEX IF NOT EXISTS idx_message_secrets_business ON whatsmeow_message_secrets(business_id);
+CREATE INDEX IF NOT EXISTS idx_privacy_tokens_business ON whatsmeow_privacy_tokens(business_id);
+CREATE INDEX IF NOT EXISTS idx_lid_map_business ON whatsmeow_lid_map(business_id);
+CREATE INDEX IF NOT EXISTS idx_event_buffer_business ON whatsmeow_event_buffer(business_id);
+
+-- Composite indexes for common query patterns
+CREATE INDEX IF NOT EXISTS idx_sessions_business_jid ON whatsmeow_sessions(business_id, our_jid);
+CREATE INDEX IF NOT EXISTS idx_contacts_business_jid ON whatsmeow_contacts(business_id, our_jid);
+CREATE INDEX IF NOT EXISTS idx_identity_keys_business_jid ON whatsmeow_identity_keys(business_id, our_jid);

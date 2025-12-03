@@ -9,7 +9,6 @@ CREATE INDEX IF NOT EXISTS idx_app_state_sync_keys_business ON whatsmeow_app_sta
 CREATE INDEX IF NOT EXISTS idx_app_state_version_business ON whatsmeow_app_state_version(business_id);
 CREATE INDEX IF NOT EXISTS idx_app_state_mutation_macs_business ON whatsmeow_app_state_mutation_macs(business_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_business ON whatsmeow_contacts(business_id);
-CREATE INDEX IF NOT EXISTS idx_redacted_phones_business ON whatsmeow_redacted_phones(business_id);
 CREATE INDEX IF NOT EXISTS idx_chat_settings_business ON whatsmeow_chat_settings(business_id);
 CREATE INDEX IF NOT EXISTS idx_message_secrets_business ON whatsmeow_message_secrets(business_id);
 CREATE INDEX IF NOT EXISTS idx_privacy_tokens_business ON whatsmeow_privacy_tokens(business_id);

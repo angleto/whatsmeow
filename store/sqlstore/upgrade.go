@@ -8,17 +8,84 @@ package sqlstore
 
 import (
 	"context"
+	"fmt"
+	"io/fs"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"go.mau.fi/whatsmeow/store/sqlstore/upgrades"
 )
 
-type upgradeFunc func(pgx.Tx, *ClientInstance) error
+// LatestVersion is the latest database schema version.
+// This should match the version in 00-latest-schema.sql header (v0 -> vN).
+const LatestVersion = 12
 
-// Upgrades is a list of functions that will upgrade a database to the latest version.
-//
-// This may be of use if you want to manage the database fully manually, but in most cases you
-// should just call Container.Upgrade to let the library handle everything.
-var Upgrades = [...]upgradeFunc{upgradeV1, upgradeV2}
+// migrationFile represents a SQL migration file with its version number.
+type migrationFile struct {
+	version  int
+	filename string
+	content  string
+}
+
+// versionRegex matches SQL file names like "03-message-secrets.sql" or "00-latest-schema.sql"
+var versionRegex = regexp.MustCompile(`^(\d+)-.*\.sql$`)
+
+// loadMigrations loads all SQL migration files from the embedded filesystem.
+func loadMigrations() ([]migrationFile, error) {
+	entries, err := fs.ReadDir(upgrades.FS, ".")
+	if err != nil {
+		return nil, fmt.Errorf("failed to read migrations directory: %w", err)
+	}
+
+	var migrations []migrationFile
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+
+		matches := versionRegex.FindStringSubmatch(entry.Name())
+		if matches == nil {
+			continue
+		}
+
+		version, err := strconv.Atoi(matches[1])
+		if err != nil {
+			continue
+		}
+
+		content, err := fs.ReadFile(upgrades.FS, entry.Name())
+		if err != nil {
+			return nil, fmt.Errorf("failed to read migration file %s: %w", entry.Name(), err)
+		}
+
+		migrations = append(migrations, migrationFile{
+			version:  version,
+			filename: entry.Name(),
+			content:  string(content),
+		})
+	}
+
+	// Sort migrations by version number
+	sort.Slice(migrations, func(i, j int) bool {
+		return migrations[i].version < migrations[j].version
+	})
+
+	return migrations, nil
+}
+
+// getLatestSchema returns the content of the 00-latest-schema.sql file.
+func getLatestSchema(migrations []migrationFile) (string, bool) {
+	for _, m := range migrations {
+		if m.version == 0 && strings.Contains(m.filename, "latest-schema") {
+			return m.content, true
+		}
+	}
+	return "", false
+}
 
 func (clientInstance *ClientInstance) getVersion() (int, error) {
 	_, err := clientInstance.DbPool.Exec(context.Background(), "CREATE TABLE IF NOT EXISTS whatsmeow_version (version INTEGER)")
@@ -34,257 +101,108 @@ func (clientInstance *ClientInstance) getVersion() (int, error) {
 	return version, nil
 }
 
-func (clientInstance *ClientInstance) setVersion(tx pgx.Tx, version int) error {
-	_, err := tx.Exec(context.Background(), "DELETE FROM whatsmeow_version")
+func (clientInstance *ClientInstance) setVersion(ctx context.Context, version int) error {
+	_, err := clientInstance.DbPool.Exec(ctx, "DELETE FROM whatsmeow_version")
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(context.Background(), "INSERT INTO whatsmeow_version (version) VALUES ($1)", version)
+	_, err = clientInstance.DbPool.Exec(ctx, "INSERT INTO whatsmeow_version (version) VALUES ($1)", version)
 	return err
 }
 
 // Upgrade upgrades the database from the current to the latest version available.
 func (clientInstance *ClientInstance) Upgrade() error {
-	version, err := clientInstance.getVersion()
+	currentVersion, err := clientInstance.getVersion()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get current version: %w", err)
 	}
 
-	for ; version < len(Upgrades); version++ {
-		tx, err := clientInstance.DbPool.Begin(context.Background())
-		if err != nil {
-			return err
-		}
-
-		migrateFunc := Upgrades[version]
-		clientInstance.Log.Infof("Upgrading database to v%d", version+1)
-		err = migrateFunc(tx, clientInstance)
-		if err != nil {
-			_ = tx.Rollback(context.Background())
-			return err
-		}
-
-		if err = clientInstance.setVersion(tx, version+1); err != nil {
-			return err
-		}
-
-		if err = tx.Commit(context.Background()); err != nil {
-			return err
-		}
+	if currentVersion >= LatestVersion {
+		clientInstance.Log.Infof("Database already at version %d, no upgrade needed", currentVersion)
+		return nil
 	}
 
+	migrations, err := loadMigrations()
+	if err != nil {
+		return fmt.Errorf("failed to load migrations: %w", err)
+	}
+
+	ctx := context.Background()
+
+	// Fresh install: use the latest schema directly
+	if currentVersion == 0 {
+		latestSchema, found := getLatestSchema(migrations)
+		if !found {
+			return fmt.Errorf("latest schema file (00-latest-schema.sql) not found")
+		}
+
+		clientInstance.Log.Infof("Fresh install: applying latest schema (v%d)", LatestVersion)
+
+		tx, err := clientInstance.DbPool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction: %w", err)
+		}
+
+		_, err = tx.Exec(ctx, latestSchema)
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("failed to apply latest schema: %w", err)
+		}
+
+		if err = clientInstance.setVersionInTx(ctx, tx, LatestVersion); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("failed to set version: %w", err)
+		}
+
+		if err = tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit transaction: %w", err)
+		}
+
+		clientInstance.Log.Infof("Database upgraded to v%d", LatestVersion)
+		return nil
+	}
+
+	// Incremental upgrade: apply migrations one by one
+	for _, migration := range migrations {
+		// Skip version 0 (latest schema) and already applied versions
+		if migration.version == 0 || migration.version <= currentVersion {
+			continue
+		}
+
+		clientInstance.Log.Infof("Upgrading database to v%d (%s)", migration.version, migration.filename)
+
+		tx, err := clientInstance.DbPool.Begin(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to begin transaction for v%d: %w", migration.version, err)
+		}
+
+		_, err = tx.Exec(ctx, migration.content)
+		if err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("failed to apply migration v%d (%s): %w", migration.version, migration.filename, err)
+		}
+
+		if err = clientInstance.setVersionInTx(ctx, tx, migration.version); err != nil {
+			_ = tx.Rollback(ctx)
+			return fmt.Errorf("failed to set version to %d: %w", migration.version, err)
+		}
+
+		if err = tx.Commit(ctx); err != nil {
+			return fmt.Errorf("failed to commit migration v%d: %w", migration.version, err)
+		}
+
+		currentVersion = migration.version
+	}
+
+	clientInstance.Log.Infof("Database upgraded to v%d", currentVersion)
 	return nil
 }
 
-func upgradeV1(tx pgx.Tx, _ *ClientInstance) error {
-	_, err := tx.Exec(context.Background(), `CREATE TABLE IF NOT EXISTS whatsmeow_device (
-  	business_id TEXT NOT NULL,
-	jid TEXT NOT NULL,
-	lid TEXT,
-
-	facebook_uuid uuid,
-
-	registration_id BIGINT NOT NULL CHECK ( registration_id >= 0 AND registration_id < 4294967296 ),
-
-	noise_key    bytea NOT NULL CHECK ( length(noise_key) = 32 ),
-	identity_key bytea NOT NULL CHECK ( length(identity_key) = 32 ),
-
-	signed_pre_key     bytea   NOT NULL CHECK ( length(signed_pre_key) = 32 ),
-	signed_pre_key_id  INTEGER NOT NULL CHECK ( signed_pre_key_id >= 0 AND signed_pre_key_id < 16777216 ),
-	signed_pre_key_sig bytea   NOT NULL CHECK ( length(signed_pre_key_sig) = 64 ),
-
-	adv_key             bytea NOT NULL,
-	adv_details         bytea NOT NULL,
-	adv_account_sig     bytea NOT NULL CHECK ( length(adv_account_sig) = 64 ),
-	adv_account_sig_key bytea NOT NULL CHECK ( length(adv_account_sig_key) = 32 ),
-	adv_device_sig      bytea NOT NULL CHECK ( length(adv_device_sig) = 64 ),
-
-	platform      TEXT NOT NULL DEFAULT '',
-	business_name TEXT NOT NULL DEFAULT '',
-	push_name     TEXT NOT NULL DEFAULT '',
-
-	lid_migration_ts BIGINT NOT NULL DEFAULT 0,
-
-	PRIMARY KEY (business_id, jid)
-);
-
-	CREATE TABLE IF NOT EXISTS whatsmeow_identity_keys (
-    business_id TEXT NOT NULL,
-	our_jid  TEXT,
-	their_id TEXT,
-	identity bytea NOT NULL CHECK ( length(identity) = 32 ),
-
-	PRIMARY KEY (business_id, our_jid, their_id),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_pre_keys (
-	business_id TEXT NOT NULL,
-	jid      TEXT,
-	key_id   INTEGER          CHECK ( key_id >= 0 AND key_id < 16777216 ),
-	key      bytea   NOT NULL CHECK ( length(key) = 32 ),
-	uploaded BOOLEAN NOT NULL,
-
-	PRIMARY KEY (business_id, jid, key_id),
-	FOREIGN KEY (business_id, jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_sessions (
-	business_id TEXT NOT NULL,
-	our_jid  TEXT,
-	their_id TEXT,
-	session  bytea,
-
-	PRIMARY KEY (business_id, our_jid, their_id),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_sender_keys (
-    business_id TEXT NOT NULL,
-	our_jid    TEXT,
-	chat_id    TEXT,
-	sender_id  TEXT,
-	sender_key bytea NOT NULL,
-
-	PRIMARY KEY (business_id, our_jid, chat_id, sender_id),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_app_state_sync_keys (
-	business_id TEXT NOT NULL,
-	jid         TEXT,
-	key_id      bytea,
-	key_data    bytea  NOT NULL,
-	timestamp   BIGINT NOT NULL,
-	fingerprint bytea  NOT NULL,
-
-	PRIMARY KEY (business_id, jid, key_id),
-	FOREIGN KEY (business_id, jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_app_state_version (
-	business_id TEXT NOT NULL,
-	jid     TEXT,
-	name    TEXT,
-	version BIGINT NOT NULL,
-	hash    bytea  NOT NULL CHECK ( length(hash) = 128 ),
-
-	PRIMARY KEY (business_id, jid, name),
-	FOREIGN KEY (business_id, jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_app_state_mutation_macs (
-	business_id TEXT NOT NULL,
-	jid       TEXT,
-	name      TEXT,
-	version   BIGINT,
-	index_mac bytea          CHECK ( length(index_mac) = 32 ),
-	value_mac bytea NOT NULL CHECK ( length(value_mac) = 32 ),
-
-	PRIMARY KEY (business_id, jid, name, version, index_mac),
-	FOREIGN KEY (business_id, jid, name) REFERENCES whatsmeow_app_state_version(business_id, jid, name) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_contacts (
-	business_id TEXT NOT NULL,
-	our_jid        TEXT,
-	their_jid      TEXT,
-	first_name     TEXT,
-	full_name      TEXT,
-	push_name      TEXT,
-	business_name  TEXT,
-	redacted_phone TEXT,
-
-	PRIMARY KEY (business_id, our_jid, their_jid),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_chat_settings (
-	business_id TEXT NOT NULL,
-	our_jid       TEXT,
-	chat_jid      TEXT,
-	muted_until   BIGINT  NOT NULL DEFAULT 0,
-	pinned        BOOLEAN NOT NULL DEFAULT false,
-	archived      BOOLEAN NOT NULL DEFAULT false,
-
-	PRIMARY KEY (business_id, our_jid, chat_jid),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_message_secrets (
-	business_id TEXT NOT NULL,
-	our_jid    TEXT,
-	chat_jid   TEXT,
-	sender_jid TEXT,
-	message_id TEXT,
-	key        bytea NOT NULL,
-
-	PRIMARY KEY (business_id, our_jid, chat_jid, sender_jid, message_id),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_privacy_tokens (
-	business_id TEXT NOT NULL,
-	our_jid   TEXT,
-	their_jid TEXT,
-	token     bytea  NOT NULL,
-	timestamp BIGINT NOT NULL,
-	PRIMARY KEY (business_id, our_jid, their_jid)
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_lid_map (
-	business_id TEXT NOT NULL,
-	lid TEXT NOT NULL,
-	pn  TEXT NOT NULL,
-	PRIMARY KEY (business_id, lid),
-	UNIQUE (business_id, pn)
-);
-
-CREATE TABLE IF NOT EXISTS whatsmeow_event_buffer (
-	business_id TEXT NOT NULL,
-	our_jid          TEXT   NOT NULL,
-	ciphertext_hash  bytea  NOT NULL CHECK ( length(ciphertext_hash) = 32 ),
-	plaintext        bytea,
-	server_timestamp BIGINT NOT NULL,
-	insert_timestamp BIGINT NOT NULL,
-	PRIMARY KEY (business_id, our_jid, ciphertext_hash),
-	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
-);
-	`)
+func (clientInstance *ClientInstance) setVersionInTx(ctx context.Context, tx pgx.Tx, version int) error {
+	_, err := tx.Exec(ctx, "DELETE FROM whatsmeow_version")
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func upgradeV2(tx pgx.Tx, clientInstance *ClientInstance) error {
-	clientInstance.Log.Infof("Adding performance indexes on business_id columns for multitenancy")
-
-	_, err := tx.Exec(context.Background(), `
--- Add indexes on business_id for efficient tenant filtering and query performance
-CREATE INDEX IF NOT EXISTS idx_identity_keys_business ON whatsmeow_identity_keys(business_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_business ON whatsmeow_sessions(business_id);
-CREATE INDEX IF NOT EXISTS idx_pre_keys_business ON whatsmeow_pre_keys(business_id);
-CREATE INDEX IF NOT EXISTS idx_sender_keys_business ON whatsmeow_sender_keys(business_id);
-CREATE INDEX IF NOT EXISTS idx_app_state_sync_keys_business ON whatsmeow_app_state_sync_keys(business_id);
-CREATE INDEX IF NOT EXISTS idx_app_state_version_business ON whatsmeow_app_state_version(business_id);
-CREATE INDEX IF NOT EXISTS idx_app_state_mutation_macs_business ON whatsmeow_app_state_mutation_macs(business_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_business ON whatsmeow_contacts(business_id);
-CREATE INDEX IF NOT EXISTS idx_chat_settings_business ON whatsmeow_chat_settings(business_id);
-CREATE INDEX IF NOT EXISTS idx_message_secrets_business ON whatsmeow_message_secrets(business_id);
-CREATE INDEX IF NOT EXISTS idx_privacy_tokens_business ON whatsmeow_privacy_tokens(business_id);
-CREATE INDEX IF NOT EXISTS idx_lid_map_business ON whatsmeow_lid_map(business_id);
-CREATE INDEX IF NOT EXISTS idx_event_buffer_business ON whatsmeow_event_buffer(business_id);
-
--- Add composite indexes for common query patterns
-CREATE INDEX IF NOT EXISTS idx_sessions_business_jid ON whatsmeow_sessions(business_id, our_jid);
-CREATE INDEX IF NOT EXISTS idx_contacts_business_jid ON whatsmeow_contacts(business_id, our_jid);
-CREATE INDEX IF NOT EXISTS idx_identity_keys_business_jid ON whatsmeow_identity_keys(business_id, our_jid);
-	`)
-	if err != nil {
-		return err
-	}
-
-	clientInstance.Log.Infof("Successfully added %d indexes for multitenancy performance", 16)
-	return nil
+	_, err = tx.Exec(ctx, "INSERT INTO whatsmeow_version (version) VALUES ($1)", version)
+	return err
 }
