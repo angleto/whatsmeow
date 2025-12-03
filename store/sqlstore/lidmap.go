@@ -9,11 +9,13 @@ package sqlstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
@@ -306,7 +308,18 @@ func (s *CachedLIDMap) unlockedPutLIDMappingTx(ctx context.Context, tx pgx.Tx, l
 	}
 	_, err = tx.Exec(ctx, putLIDMappingQuery, s.businessId, lid.User, pn.User)
 	if err != nil {
-		return err
+		// Handle duplicate key errors gracefully - this can happen due to race conditions
+		// between concurrent goroutines or processes. The mapping already exists.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			zerolog.Ctx(ctx).Debug().
+				Str("lid", lid.User).
+				Str("pn", pn.User).
+				Str("constraint", pgErr.ConstraintName).
+				Msg("LID mapping already exists (duplicate key), ignoring")
+		} else {
+			return err
+		}
 	}
 	s.pnToLIDCache[pn.User] = lid.User
 	s.lidToPNCache[lid.User] = pn.User
