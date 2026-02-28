@@ -28,6 +28,7 @@ ALTER TABLE whatsmeow_message_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whatsmeow_privacy_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whatsmeow_lid_map ENABLE ROW LEVEL SECURITY;
 ALTER TABLE whatsmeow_event_buffer ENABLE ROW LEVEL SECURITY;
+ALTER TABLE whatsmeow_retry_buffer ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for whatsmeow_device
 CREATE POLICY tenant_isolation_device ON whatsmeow_device
@@ -149,6 +150,14 @@ CREATE POLICY tenant_isolation_event_buffer_insert ON whatsmeow_event_buffer
     FOR INSERT
     WITH CHECK (business_id = current_setting('app.current_business_id', true));
 
+-- Create policies for whatsmeow_retry_buffer
+CREATE POLICY tenant_isolation_retry_buffer ON whatsmeow_retry_buffer
+    USING (business_id = current_setting('app.current_business_id', true));
+
+CREATE POLICY tenant_isolation_retry_buffer_insert ON whatsmeow_retry_buffer
+    FOR INSERT
+    WITH CHECK (business_id = current_setting('app.current_business_id', true));
+
 -- Grant bypass to superuser (for maintenance operations)
 -- Note: In production, you might want to create a specific maintenance role
 ALTER TABLE whatsmeow_device FORCE ROW LEVEL SECURITY;
@@ -166,6 +175,7 @@ ALTER TABLE whatsmeow_message_secrets FORCE ROW LEVEL SECURITY;
 ALTER TABLE whatsmeow_privacy_tokens FORCE ROW LEVEL SECURITY;
 ALTER TABLE whatsmeow_lid_map FORCE ROW LEVEL SECURITY;
 ALTER TABLE whatsmeow_event_buffer FORCE ROW LEVEL SECURITY;
+ALTER TABLE whatsmeow_retry_buffer FORCE ROW LEVEL SECURITY;
 
 -- To disable RLS (for testing or rollback), run:
 -- ALTER TABLE whatsmeow_device DISABLE ROW LEVEL SECURITY;

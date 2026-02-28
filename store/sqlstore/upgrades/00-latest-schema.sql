@@ -1,4 +1,4 @@
--- v0 -> v12 (compatible with v8+): Latest schema for multitenant setup
+-- v0 -> v14 (compatible with v8+): Latest schema for multitenant setup
 CREATE TABLE IF NOT EXISTS whatsmeow_device (
   	business_id TEXT NOT NULL,
 	jid TEXT NOT NULL,
@@ -146,14 +146,18 @@ CREATE TABLE IF NOT EXISTS whatsmeow_message_secrets (
 );
 
 CREATE TABLE IF NOT EXISTS whatsmeow_privacy_tokens (
-	business_id TEXT NOT NULL,
-	our_jid   TEXT,
-	their_jid TEXT,
-	token     bytea  NOT NULL,
-	timestamp BIGINT NOT NULL,
+	business_id      TEXT NOT NULL,
+	our_jid          TEXT,
+	their_jid        TEXT,
+	token            bytea  NOT NULL,
+	timestamp        BIGINT NOT NULL,
+	sender_timestamp BIGINT,
 	PRIMARY KEY (business_id, our_jid, their_jid),
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_whatsmeow_privacy_tokens_our_jid_timestamp
+ON whatsmeow_privacy_tokens (business_id, our_jid, timestamp);
 
 CREATE TABLE IF NOT EXISTS whatsmeow_lid_map (
 	business_id TEXT NOT NULL,
@@ -164,7 +168,7 @@ CREATE TABLE IF NOT EXISTS whatsmeow_lid_map (
 );
 
 CREATE TABLE IF NOT EXISTS whatsmeow_event_buffer (
-	business_id TEXT NOT NULL,
+	business_id      TEXT NOT NULL,
 	our_jid          TEXT   NOT NULL,
 	ciphertext_hash  bytea  NOT NULL CHECK ( length(ciphertext_hash) = 32 ),
 	plaintext        bytea,
@@ -173,6 +177,21 @@ CREATE TABLE IF NOT EXISTS whatsmeow_event_buffer (
 	PRIMARY KEY (business_id, our_jid, ciphertext_hash),
 	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS whatsmeow_retry_buffer (
+	business_id TEXT NOT NULL,
+	our_jid     TEXT   NOT NULL,
+	chat_jid    TEXT   NOT NULL,
+	message_id  TEXT   NOT NULL,
+	format      TEXT   NOT NULL,
+	plaintext   bytea  NOT NULL,
+	timestamp   BIGINT NOT NULL,
+
+	PRIMARY KEY (business_id, our_jid, chat_jid, message_id),
+	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS whatsmeow_retry_buffer_timestamp_idx ON whatsmeow_retry_buffer (business_id, our_jid, timestamp);
 
 -- Performance indexes for multitenancy
 CREATE INDEX IF NOT EXISTS idx_identity_keys_business ON whatsmeow_identity_keys(business_id);
@@ -188,6 +207,7 @@ CREATE INDEX IF NOT EXISTS idx_message_secrets_business ON whatsmeow_message_sec
 CREATE INDEX IF NOT EXISTS idx_privacy_tokens_business ON whatsmeow_privacy_tokens(business_id);
 CREATE INDEX IF NOT EXISTS idx_lid_map_business ON whatsmeow_lid_map(business_id);
 CREATE INDEX IF NOT EXISTS idx_event_buffer_business ON whatsmeow_event_buffer(business_id);
+CREATE INDEX IF NOT EXISTS idx_retry_buffer_business ON whatsmeow_retry_buffer(business_id);
 
 -- Composite indexes for common query patterns
 CREATE INDEX IF NOT EXISTS idx_sessions_business_jid ON whatsmeow_sessions(business_id, our_jid);

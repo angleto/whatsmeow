@@ -68,10 +68,6 @@ FROM whatsmeow_device WHERE business_id=$1
 
 const getDeviceQuery = getAllDevicesQuery + " AND jid=$2"
 
-type scannable interface {
-	Scan(dest ...interface{}) error
-}
-
 func (c *Container) scanDevice(row scannable) (*store.Device, error) {
 	var device store.Device
 	device.DatabaseErrorHandler = c.DatabaseErrorHandler
