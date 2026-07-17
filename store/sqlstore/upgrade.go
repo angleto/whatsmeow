@@ -23,9 +23,12 @@ import (
 // LatestVersion is the latest database schema version.
 // This should match the version in 00-latest-schema.sql header (v0 -> vN).
 // Must be >= the highest numbered migration file so existing DBs apply
-// migrations 13 (retry-buffer) and 14 (nct-salt); both are idempotent
-// (CREATE TABLE/INDEX IF NOT EXISTS), so re-applying on a fresh v14 install is a no-op.
-const LatestVersion = 14
+// migrations 13 (retry-buffer), 14 (nct-salt) and 15 (privacy-token sender_timestamp).
+// 15 was previously a second "12" file: DBs already at v12 skipped it (version <= current)
+// and never got whatsmeow_privacy_tokens.sender_timestamp, which v2.4 store code reads;
+// renumbering to 15 makes existing DBs apply it. All are idempotent (CREATE/ALTER ... IF
+// NOT EXISTS), so re-applying on a DB that already has the column is a no-op.
+const LatestVersion = 15
 
 // migrationFile represents a SQL migration file with its version number.
 type migrationFile struct {

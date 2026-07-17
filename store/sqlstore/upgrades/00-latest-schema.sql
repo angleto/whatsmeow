@@ -1,4 +1,4 @@
--- v0 -> v14 (compatible with v8+): Latest schema for multitenant setup
+-- v0 -> v15 (compatible with v8+): Latest schema for multitenant setup
 CREATE TABLE IF NOT EXISTS whatsmeow_device (
   	business_id TEXT NOT NULL,
 	jid TEXT NOT NULL,
