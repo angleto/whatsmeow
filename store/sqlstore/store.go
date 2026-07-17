@@ -348,26 +348,29 @@ func (s *SQLStore) GetOrGenPreKeys(ctx context.Context, count uint32) ([]*keys.P
 		return nil, fmt.Errorf("failed to query existing prekeys: %w", err)
 	}
 	defer res.Close()
-	newKeys := make([]*keys.PreKey, count)
-	var existingCount uint32
+	var newKeys []*keys.PreKey
 	for res.Next() {
 		var key *keys.PreKey
 		key, err = scanPreKey(res)
 		if err != nil {
 			return nil, err
 		} else if key != nil {
-			newKeys[existingCount] = key
-			existingCount++
+			newKeys = append(newKeys, key)
 		}
 	}
+	if err = res.Err(); err != nil {
+		return nil, fmt.Errorf("failed to iterate existing prekeys: %w", err)
+	}
 
-	if existingCount < uint32(len(newKeys)) {
+	alreadyGeneratedCount := uint32(len(newKeys))
+	if count > alreadyGeneratedCount {
 		var nextKeyID uint32
 		nextKeyID, err = s.getNextPreKeyID(ctx)
 		if err != nil {
 			return nil, err
 		}
-		for i := existingCount; i < count; i++ {
+		newKeys = slices.Grow(newKeys, int(count)-len(newKeys))[:count]
+		for i := alreadyGeneratedCount; i < count; i++ {
 			newKeys[i], err = s.genOnePreKey(ctx, nextKeyID, false)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate prekey: %w", err)
@@ -963,12 +966,16 @@ func (s *SQLStore) GetMessageSecret(ctx context.Context, chat, sender types.JID,
 
 const (
 	putPrivacyTokens = `
-		INSERT INTO whatsmeow_privacy_tokens (business_id, our_jid, their_jid, token, timestamp)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (business_id, our_jid, their_jid) DO UPDATE SET token=EXCLUDED.token, timestamp=EXCLUDED.timestamp
+		INSERT INTO whatsmeow_privacy_tokens (business_id, our_jid, their_jid, token, timestamp, sender_timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (business_id, our_jid, their_jid) DO UPDATE SET
+			token=EXCLUDED.token,
+			timestamp=EXCLUDED.timestamp,
+			sender_timestamp=COALESCE(EXCLUDED.sender_timestamp, whatsmeow_privacy_tokens.sender_timestamp)
+		WHERE EXCLUDED.timestamp >= whatsmeow_privacy_tokens.timestamp
 	`
 	getPrivacyToken = `
-		SELECT token, timestamp FROM whatsmeow_privacy_tokens WHERE business_id=$1 AND our_jid=$2 AND (their_jid=$3 OR their_jid=(
+		SELECT token, timestamp, sender_timestamp FROM whatsmeow_privacy_tokens WHERE business_id=$1 AND our_jid=$2 AND (their_jid=$3 OR their_jid=(
 			CASE
 				WHEN $3 LIKE '%@lid'
 					THEN (SELECT pn || '@s.whatsapp.net' FROM whatsmeow_lid_map WHERE business_id=$1 AND lid=replace($3, '@lid', ''))
@@ -979,23 +986,41 @@ const (
 		))
 		ORDER BY timestamp DESC LIMIT 1
 	`
+	deleteExpiredPrivacyTokens = `
+		DELETE FROM whatsmeow_privacy_tokens
+		WHERE business_id=$1 AND our_jid=$2 AND timestamp < $3
+	`
+)
+
+const (
+	putNCTSaltQuery = `
+		INSERT INTO whatsmeow_nct_salt (business_id, our_jid, salt) VALUES ($1, $2, $3)
+		ON CONFLICT (business_id, our_jid) DO UPDATE SET salt=excluded.salt
+	`
+	getNCTSaltQuery    = `SELECT salt FROM whatsmeow_nct_salt WHERE business_id=$1 AND our_jid=$2`
+	deleteNCTSaltQuery = `DELETE FROM whatsmeow_nct_salt WHERE business_id=$1 AND our_jid=$2`
 )
 
 func (s *SQLStore) PutPrivacyTokens(ctx context.Context, tokens ...store.PrivacyToken) error {
 	if len(tokens) == 0 {
 		return nil
 	}
-	args := make([]any, 2+len(tokens)*3)
+	args := make([]any, 2+len(tokens)*4)
 	placeholders := make([]string, len(tokens))
 	args[0] = s.businessId
 	args[1] = s.JID
 	for i, token := range tokens {
-		args[i*3+2] = token.User.ToNonAD().String()
-		args[i*3+3] = token.Token
-		args[i*3+4] = token.Timestamp.Unix()
-		placeholders[i] = fmt.Sprintf("($1, $2, $%d, $%d, $%d)", i*3+3, i*3+4, i*3+5)
+		args[i*4+2] = token.User.ToNonAD().String()
+		args[i*4+3] = token.Token
+		args[i*4+4] = token.Timestamp.Unix()
+		if token.SenderTimestamp.IsZero() {
+			args[i*4+5] = nil
+		} else {
+			args[i*4+5] = token.SenderTimestamp.Unix()
+		}
+		placeholders[i] = fmt.Sprintf("($1, $2, $%d, $%d, $%d, $%d)", i*4+3, i*4+4, i*4+5, i*4+6)
 	}
-	query := strings.ReplaceAll(putPrivacyTokens, "($1, $2, $3, $4, $5)", strings.Join(placeholders, ","))
+	query := strings.ReplaceAll(putPrivacyTokens, "($1, $2, $3, $4, $5, $6)", strings.Join(placeholders, ","))
 	_, err := s.dbPool.Exec(ctx, query, args...)
 	return err
 }
@@ -1004,15 +1029,48 @@ func (s *SQLStore) GetPrivacyToken(ctx context.Context, user types.JID) (*store.
 	var token store.PrivacyToken
 	token.User = user.ToNonAD()
 	var ts int64
-	err := s.dbPool.QueryRow(ctx, getPrivacyToken, s.businessId, s.JID, token.User).Scan(&token.Token, &ts)
+	var senderTS sql.NullInt64
+	err := s.dbPool.QueryRow(ctx, getPrivacyToken, s.businessId, s.JID, token.User).Scan(&token.Token, &ts, &senderTS)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	} else if err != nil {
 		return nil, err
 	} else {
 		token.Timestamp = time.Unix(ts, 0)
+		if senderTS.Valid {
+			token.SenderTimestamp = time.Unix(senderTS.Int64, 0)
+		}
 		return &token, nil
 	}
+}
+
+func (s *SQLStore) PutNCTSalt(ctx context.Context, salt []byte) error {
+	_, err := s.dbPool.Exec(ctx, putNCTSaltQuery, s.businessId, s.JID, salt)
+	return err
+}
+
+func (s *SQLStore) GetNCTSalt(ctx context.Context) ([]byte, error) {
+	var salt []byte
+	err := s.dbPool.QueryRow(ctx, getNCTSaltQuery, s.businessId, s.JID).Scan(&salt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	return salt, nil
+}
+
+func (s *SQLStore) DeleteNCTSalt(ctx context.Context) error {
+	_, err := s.dbPool.Exec(ctx, deleteNCTSaltQuery, s.businessId, s.JID)
+	return err
+}
+
+func (s *SQLStore) DeleteExpiredPrivacyTokens(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := s.dbPool.Exec(ctx, deleteExpiredPrivacyTokens, s.businessId, s.JID, cutoff.Unix())
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected(), nil
 }
 
 const (

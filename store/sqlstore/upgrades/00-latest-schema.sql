@@ -159,6 +159,14 @@ CREATE TABLE IF NOT EXISTS whatsmeow_privacy_tokens (
 CREATE INDEX IF NOT EXISTS idx_whatsmeow_privacy_tokens_our_jid_timestamp
 ON whatsmeow_privacy_tokens (business_id, our_jid, timestamp);
 
+CREATE TABLE IF NOT EXISTS whatsmeow_nct_salt (
+	business_id TEXT NOT NULL,
+	our_jid     TEXT NOT NULL,
+	salt        bytea NOT NULL,
+	PRIMARY KEY (business_id, our_jid),
+	FOREIGN KEY (business_id, our_jid) REFERENCES whatsmeow_device(business_id, jid) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS whatsmeow_lid_map (
 	business_id TEXT NOT NULL,
 	lid TEXT NOT NULL,
