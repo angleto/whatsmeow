@@ -219,6 +219,7 @@ func (c *Container) initializeDevice(device *store.Device) {
 	device.ChatSettings = innerStore
 	device.MsgSecrets = innerStore
 	device.PrivacyTokens = innerStore
+	device.NCTSalt = innerStore
 	device.EventBuffer = innerStore
 	device.LIDs = c.LIDMap
 	device.Container = c
