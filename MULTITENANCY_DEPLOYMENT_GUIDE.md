@@ -288,27 +288,29 @@ func main() {
 
 ## Security Hardening (Optional)
 
-### Enable Row-Level Security (RLS)
+### Row-Level Security (RLS) — not usable as shipped
 
-For defense-in-depth, enable PostgreSQL Row-Level Security:
+> **Do NOT apply RLS policies to a running deployment.** They would break it.
 
-```bash
-psql -U postgres whatsmeow < store/sqlstore/rls_policies.sql
-```
+Earlier versions shipped `store/sqlstore/rls_policies.sql` and recommended
+applying it. That file has been removed because it could not work as delivered:
 
-### Update Application to Set Session Variable
+- **The application never sets `app.current_business_id`.** The policies key on
+  `current_setting('app.current_business_id', true)`; with the GUC unset that is
+  NULL, so under `FORCE ROW LEVEL SECURITY` every `SELECT/UPDATE/DELETE` matches
+  zero rows and every `INSERT` is rejected — the store stops working entirely.
+- **A per-connection `SET` cannot be added naively.** This package uses a shared
+  `pgxpool`; a non-`LOCAL` `SET app.current_business_id` would persist on the
+  pooled connection and leak into the next tenant's queries. Real RLS here would
+  require either a per-tenant pool or `SET LOCAL` inside a transaction wrapping
+  every query — neither exists today.
+- The removed file also referenced `whatsmeow_redacted_phones`, which is not a
+  table (`redacted_phone` is a column of `whatsmeow_contacts`), so the script
+  failed to apply at all.
 
-```go
-func (c *Container) setSessionBusinessId(ctx context.Context) error {
-    _, err := c.dbPool.Exec(ctx,
-        "SET app.current_business_id = $1",
-        c.businessId)
-    return err
-}
-
-// Call before any queries
-err := container.setSessionBusinessId(ctx)
-```
+Tenant isolation is enforced at the application layer: every query is scoped by
+`business_id` (composite primary keys per business). RLS as genuine
+defense-in-depth is future work, gated on per-connection business-id scoping.
 
 ### Validate businessId Input
 

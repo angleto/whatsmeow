@@ -177,10 +177,11 @@ go test -v ./store/sqlstore -run TestDeleteCascade
 
 ### Optional but Recommended
 
-5. **Enable Row-Level Security**
-   ```bash
-   psql -U postgres your_db < store/sqlstore/rls_policies.sql
-   ```
+5. **Row-Level Security — removed, do not apply**
+   The `rls_policies.sql` file has been removed: applying it would break the
+   store (the app never sets `app.current_business_id`, so under FORCE RLS every
+   query matches zero rows), and it referenced a non-existent table. RLS as real
+   defense-in-depth is future work; see MULTITENANCY_DEPLOYMENT_GUIDE.md.
 
 6. **Add Input Validation**
    - Validate businessId format before creating containers

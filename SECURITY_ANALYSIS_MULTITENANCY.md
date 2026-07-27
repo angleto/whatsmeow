@@ -164,9 +164,9 @@ CREATE INDEX idx_event_buffer_business ON whatsmeow_event_buffer(business_id);
 
 ## MEDIUM PRIORITY RECOMMENDATIONS
 
-### 5. Add Database-Level Row Security Policy (RLS)
+### 5. Add Database-Level Row Security Policy (RLS) — future work, not shippable as-is
 
-**Enhancement:** Use PostgreSQL Row-Level Security for defense-in-depth
+**Enhancement:** PostgreSQL Row-Level Security would add defense-in-depth, e.g.:
 
 ```sql
 ALTER TABLE whatsmeow_device ENABLE ROW LEVEL SECURITY;
@@ -174,7 +174,15 @@ CREATE POLICY tenant_isolation ON whatsmeow_device
     USING (business_id = current_setting('app.current_business_id'));
 ```
 
-**Benefit:** Additional layer preventing accidental cross-tenant access even if application code has bugs
+**Not usable today.** The policy depends on `app.current_business_id`, but the
+application never sets it, and it cannot be set naively: this package uses a
+shared connection pool, so a non-`LOCAL` `SET` would leak across tenants. Making
+RLS real requires per-tenant connection scoping (a per-tenant pool, or `SET
+LOCAL` in a transaction around every query). A previously shipped
+`rls_policies.sql` was removed because applying it as-is broke the store.
+
+**Benefit (once wired):** a layer preventing accidental cross-tenant access even
+if application code has bugs.
 
 ### 6. Add Input Validation for businessId
 
