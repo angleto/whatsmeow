@@ -116,18 +116,36 @@ func (le *LeaderElection) IsLeader() bool {
 	return le.isLeader
 }
 
+// lockTagParts splits a bigint advisory lock key the way PostgreSQL does when it
+// builds the lock tag: the high 32 bits go to pg_locks.classid, the low 32 bits to
+// pg_locks.objid. Both columns are oid (uint32), so the key can never be matched as
+// a single bigint.
+func lockTagParts(lockID int64) (classID, objID uint32) {
+	key := uint64(lockID)
+	return uint32(key >> 32), uint32(key)
+}
+
 // VerifyLeadership verifies that this instance still holds the advisory lock.
 // This is more expensive than IsLeader() as it queries the database.
+//
+// The comparison is against classid/objid separately rather than the whole key:
+// pg_locks exposes both as oid, so binding the int64 key to a single parameter
+// makes the driver infer oid and fail to encode anything above 2^32, which is
+// almost every key GenerateLockID produces. objsubid distinguishes the one-bigint
+// form (1) from the two-int32 form (2), which shares the same tag layout.
 func (le *LeaderElection) VerifyLeadership(ctx context.Context) (bool, error) {
+	classID, objID := lockTagParts(le.lockID)
 	var isLocked bool
 	err := le.pool.QueryRow(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM pg_locks
 			WHERE locktype='advisory'
-			AND objid=$1
+			AND classid=$1
+			AND objid=$2
+			AND objsubid=1
 			AND pid=pg_backend_pid()
 		)
-	`, le.lockID).Scan(&isLocked)
+	`, classID, objID).Scan(&isLocked)
 
 	if err != nil {
 		return false, fmt.Errorf("failed to verify leadership: %w", err)
