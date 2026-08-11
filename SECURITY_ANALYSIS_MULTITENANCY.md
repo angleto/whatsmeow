@@ -164,9 +164,9 @@ CREATE INDEX idx_event_buffer_business ON whatsmeow_event_buffer(business_id);
 
 ## MEDIUM PRIORITY RECOMMENDATIONS
 
-### 5. Add Database-Level Row Security Policy (RLS)
+### 5. Database-Level Row Security Policy (RLS) — available, opt-in
 
-**Enhancement:** Use PostgreSQL Row-Level Security for defense-in-depth
+**Enhancement:** PostgreSQL Row-Level Security would add defense-in-depth, e.g.:
 
 ```sql
 ALTER TABLE whatsmeow_device ENABLE ROW LEVEL SECURITY;
@@ -174,7 +174,19 @@ CREATE POLICY tenant_isolation ON whatsmeow_device
     USING (business_id = current_setting('app.current_business_id'));
 ```
 
-**Benefit:** Additional layer preventing accidental cross-tenant access even if application code has bugs
+**How to use it.** The policy depends on `app.current_business_id`. It cannot be
+set naively, because this package uses a shared connection pool and a non-`LOCAL`
+`SET` would leak across tenants; `sqlstore.EnableTenantRLS(cfg)` provides the
+missing per-connection scoping, setting the variable on each acquisition from the
+business ID of the `Container` that issued the query. Call it on the
+`*pgxpool.Config` before creating the pool, then apply
+`store/sqlstore/rls_policies.sql`. Applying the file without that call makes every
+query match zero rows, and the layer does not work behind a transaction-pooling
+proxy (the session variable does not follow the statement).
+
+**Benefit:** a layer preventing accidental cross-tenant access even if application
+code has bugs. It does not replace the `business_id` predicate every query already
+carries.
 
 ### 6. Add Input Validation for businessId
 

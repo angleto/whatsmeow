@@ -249,6 +249,14 @@ func (s *SQLStore) MigratePNToLID(ctx context.Context, pn, lid types.JID) error 
 	if !s.migratedPNSessionsCache.Add(pnSignal) {
 		return nil
 	}
+	// If the migration does not commit, drop the cache marker so a later call retries
+	// instead of permanently skipping this contact's PN->LID migration.
+	committed := false
+	defer func() {
+		if !committed {
+			s.migratedPNSessionsCache.Remove(pnSignal)
+		}
+	}()
 	var sessionsUpdated, identityKeysUpdated, senderKeysUpdated int64
 	lidSignal := lid.SignalAddressUser()
 
@@ -294,6 +302,7 @@ func (s *SQLStore) MigratePNToLID(ctx context.Context, pn, lid types.JID) error 
 	if err = tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
+	committed = true
 
 	if sessionsUpdated > 0 || senderKeysUpdated > 0 || identityKeysUpdated > 0 {
 		s.log.Infof("Migrated %d sessions, %d identity keys and %d sender keys from %s to %s", sessionsUpdated, identityKeysUpdated, senderKeysUpdated, pnSignal, lidSignal)
@@ -1084,7 +1093,7 @@ const (
 		UPDATE whatsmeow_event_buffer SET plaintext = NULL WHERE business_id=$1 AND our_jid=$2 AND ciphertext_hash=$3
 	`
 	deleteOldBufferedHashesQuery = `
-		DELETE FROM whatsmeow_event_buffer WHERE business_id=$1 AND insert_timestamp < $2
+		DELETE FROM whatsmeow_event_buffer WHERE business_id=$1 AND our_jid=$2 AND insert_timestamp < $3
 	`
 )
 
@@ -1127,7 +1136,7 @@ func (s *SQLStore) ClearBufferedEventPlaintext(ctx context.Context, ciphertextHa
 func (s *SQLStore) DeleteOldBufferedHashes(ctx context.Context) error {
 	// The WhatsApp servers only buffer events for 14 days,
 	// so we can safely delete anything older than that.
-	_, err := s.dbPool.Exec(ctx, deleteOldBufferedHashesQuery, s.businessId, time.Now().Add(-14*24*time.Hour).UnixMilli())
+	_, err := s.dbPool.Exec(ctx, deleteOldBufferedHashesQuery, s.businessId, s.JID, time.Now().Add(-14*24*time.Hour).UnixMilli())
 	return err
 }
 

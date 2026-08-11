@@ -177,10 +177,13 @@ go test -v ./store/sqlstore -run TestDeleteCascade
 
 ### Optional but Recommended
 
-5. **Enable Row-Level Security**
-   ```bash
-   psql -U postgres your_db < store/sqlstore/rls_policies.sql
-   ```
+5. **Row-Level Security — usable, but only with the pool wired up**
+   Call `sqlstore.EnableTenantRLS(cfg)` on the `*pgxpool.Config` before creating
+   the pool, then apply `store/sqlstore/rls_policies.sql`. Applying the file
+   without that call breaks the store: the policies key on
+   `app.current_business_id`, and under FORCE RLS an unset variable makes every
+   query match zero rows. Do not enable it behind a transaction-pooling proxy.
+   See MULTITENANCY_DEPLOYMENT_GUIDE.md.
 
 6. **Add Input Validation**
    - Validate businessId format before creating containers

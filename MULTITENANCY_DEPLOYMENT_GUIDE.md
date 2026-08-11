@@ -288,11 +288,17 @@ func main() {
 
 ## Security Hardening (Optional)
 
-### Enable Row-Level Security (RLS)
+### Row-Level Security (RLS)
 
 For defense-in-depth, enable PostgreSQL Row-Level Security. Wire up the application
 **first**: the policies read the `app.current_business_id` session variable, and a pool
 that never sets it sees zero rows in every table.
+
+> Historical note: on branch v2.4 `store/sqlstore/rls_policies.sql` was deleted as
+> unusable, because the application never set that variable and a naive `SET` on a
+> shared `pgxpool` would have leaked one tenant's ID into the next tenant's queries.
+> `EnableTenantRLS` is the per-connection scoping that was missing, so the file is back
+> and covered by tests.
 
 ### 1. Configure the pool
 
@@ -329,6 +335,9 @@ The file is idempotent and can be re-run after a schema upgrade.
   policies apply to the table owner too (`FORCE ROW LEVEL SECURITY`), so a data
   migration run with RLS active would only see the rows of whichever tenant the
   connection happens to be scoped to.
+
+Tenant isolation does not depend on any of this: every query is scoped by `business_id`
+with composite primary keys per business. RLS is a second layer on top.
 
 ### Validate businessId Input
 
