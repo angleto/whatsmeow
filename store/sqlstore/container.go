@@ -210,17 +210,12 @@ func (c *Container) PutDevice(ctx context.Context, device *store.Device) error {
 
 func (c *Container) initializeDevice(device *store.Device) {
 	innerStore := NewSQLStore(c, *device.ID)
-	device.Identities = innerStore
-	device.Sessions = innerStore
-	device.PreKeys = innerStore
-	device.SenderKeys = innerStore
-	device.AppStateKeys = innerStore
-	device.AppState = innerStore
-	device.Contacts = innerStore
-	device.ChatSettings = innerStore
-	device.MsgSecrets = innerStore
-	device.PrivacyTokens = innerStore
-	device.EventBuffer = innerStore
+	// Use SetAllStores rather than assigning each field by hand: it covers every
+	// store in store.AllSessionSpecificStores, so a store added upstream cannot be
+	// silently left nil here (which is how device.NCTSalt used to end up nil and
+	// panic in cstoken.go). innerStore carries the container's businessId, so all
+	// of them stay tenant-scoped.
+	device.SetAllStores(innerStore)
 	device.LIDs = c.LIDMap
 	device.Container = c
 	device.Initialized = true
