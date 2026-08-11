@@ -417,7 +417,7 @@ CREATE TABLE whatsmeow_sessions (
 );
 ```
 
-**All 15 tables follow this pattern:**
+**All 16 tenant tables follow this pattern:**
 1. `whatsmeow_device`
 2. `whatsmeow_identity_keys`
 3. `whatsmeow_sessions`
@@ -427,12 +427,16 @@ CREATE TABLE whatsmeow_sessions (
 7. `whatsmeow_app_state_version`
 8. `whatsmeow_app_state_mutation_macs`
 9. `whatsmeow_contacts`
-10. `whatsmeow_redacted_phones`
-11. `whatsmeow_chat_settings`
-12. `whatsmeow_message_secrets`
-13. `whatsmeow_privacy_tokens`
-14. `whatsmeow_lid_map`
-15. `whatsmeow_event_buffer`
+10. `whatsmeow_chat_settings`
+11. `whatsmeow_message_secrets`
+12. `whatsmeow_privacy_tokens`
+13. `whatsmeow_lid_map`
+14. `whatsmeow_event_buffer`
+15. `whatsmeow_retry_buffer`
+16. `whatsmeow_nct_salt`
+
+Redacted phone numbers are the `redacted_phone` column of `whatsmeow_contacts`, not a
+separate table. `whatsmeow_version` holds the schema version and is not tenant scoped.
 
 **Query Pattern** (all queries):
 ```sql

@@ -25,7 +25,7 @@ import (
 
 type CachedLIDMap struct {
 	businessId string
-	dbPool     *pgxpool.Pool
+	dbPool     *tenantPool
 
 	pnToLIDCache map[string]string
 	lidToPNCache map[string]string
@@ -38,7 +38,7 @@ var _ store.LIDStore = (*CachedLIDMap)(nil)
 func NewCachedLIDMap(dbPool *pgxpool.Pool, businessId string) *CachedLIDMap {
 	return &CachedLIDMap{
 		businessId:   businessId,
-		dbPool:       dbPool,
+		dbPool:       newTenantPool(dbPool, businessId),
 		pnToLIDCache: make(map[string]string),
 		lidToPNCache: make(map[string]string),
 	}

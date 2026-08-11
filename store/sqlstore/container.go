@@ -28,7 +28,7 @@ import (
 // Container is a wrapper for a SQL database that can contain multiple whatsmeow sessions.
 type Container struct {
 	businessId string
-	dbPool     *pgxpool.Pool
+	dbPool     *tenantPool
 	log        waLog.Logger
 	LIDMap     *CachedLIDMap
 
@@ -43,7 +43,7 @@ func NewContainer(dbPool *pgxpool.Pool, businessId string, log waLog.Logger) *Co
 		log = waLog.Noop
 	}
 	return &Container{
-		dbPool:     dbPool,
+		dbPool:     newTenantPool(dbPool, businessId),
 		businessId: businessId,
 		log:        log,
 		LIDMap:     NewCachedLIDMap(dbPool, businessId),

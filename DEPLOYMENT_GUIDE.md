@@ -140,7 +140,8 @@ psql whatsmeow < store/sqlstore/upgrades/00-latest-schema.sql
 psql whatsmeow -c "\dt whatsmeow_*"
 ```
 
-Should show 15 tables:
+Should show 16 tenant tables (plus `whatsmeow_version`, which holds the schema
+version and is not tenant scoped):
 - whatsmeow_device
 - whatsmeow_identity_keys
 - whatsmeow_sessions
@@ -150,12 +151,16 @@ Should show 15 tables:
 - whatsmeow_app_state_version
 - whatsmeow_app_state_mutation_macs
 - whatsmeow_contacts
-- whatsmeow_redacted_phones
 - whatsmeow_chat_settings
 - whatsmeow_message_secrets
 - whatsmeow_privacy_tokens
 - whatsmeow_lid_map
 - whatsmeow_event_buffer
+- whatsmeow_retry_buffer
+- whatsmeow_nct_salt
+
+Redacted phone numbers are the `redacted_phone` column of `whatsmeow_contacts`,
+not a separate table.
 
 ### Connection Pooling
 
@@ -675,6 +680,11 @@ sudo apt-get install pgbouncer
 whatsmeow = host=localhost dbname=whatsmeow
 
 [pgbouncer]
+# Use pool_mode = session if the optional row level security layer
+# (store/sqlstore/rls_policies.sql + sqlstore.EnableTenantRLS) is enabled:
+# transaction pooling re-multiplexes statements onto different backends, so the
+# app.current_business_id session variable the policies read is usually missing and
+# every read silently returns zero rows.
 pool_mode = transaction
 max_client_conn = 1000
 default_pool_size = 50

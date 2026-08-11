@@ -290,25 +290,45 @@ func main() {
 
 ### Enable Row-Level Security (RLS)
 
-For defense-in-depth, enable PostgreSQL Row-Level Security:
+For defense-in-depth, enable PostgreSQL Row-Level Security. Wire up the application
+**first**: the policies read the `app.current_business_id` session variable, and a pool
+that never sets it sees zero rows in every table.
+
+### 1. Configure the pool
+
+```go
+cfg, err := pgxpool.ParseConfig(dsn)
+if err != nil {
+    return err
+}
+sqlstore.EnableTenantRLS(cfg)
+pool, err := pgxpool.NewWithConfig(ctx, cfg)
+```
+
+`EnableTenantRLS` sets `app.current_business_id` on each connection as it is acquired,
+from the business ID of the `Container` that issued the query, so one shared pool can
+serve many tenants. Do not set the variable by hand: a `SET` issued outside the
+acquisition path is not tied to the connection the next query lands on.
+
+### 2. Apply the policies
 
 ```bash
 psql -U postgres whatsmeow < store/sqlstore/rls_policies.sql
 ```
 
-### Update Application to Set Session Variable
+The file is idempotent and can be re-run after a schema upgrade.
 
-```go
-func (c *Container) setSessionBusinessId(ctx context.Context) error {
-    _, err := c.dbPool.Exec(ctx,
-        "SET app.current_business_id = $1",
-        c.businessId)
-    return err
-}
+### Constraints
 
-// Call before any queries
-err := container.setSessionBusinessId(ctx)
-```
+- **Do not enable RLS behind a transaction-pooling proxy.** PgBouncer with
+  `pool_mode = transaction` (see the connection pooling section of
+  `DEPLOYMENT_GUIDE.md`) re-multiplexes each statement onto a different server backend,
+  so the session variable is usually absent when the query runs and reads silently
+  return zero rows. Use `pool_mode = session` if RLS is enabled.
+- **Run schema migrations before enabling RLS**, or from a role with `BYPASSRLS`. The
+  policies apply to the table owner too (`FORCE ROW LEVEL SECURITY`), so a data
+  migration run with RLS active would only see the rows of whichever tenant the
+  connection happens to be scoped to.
 
 ### Validate businessId Input
 

@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mau.fi/util/exsync"
 
 	"go.mau.fi/whatsmeow/store"
@@ -41,7 +40,7 @@ type SQLStore struct {
 	contactCacheLock sync.Mutex
 
 	migratedPNSessionsCache *exsync.Set[string]
-	dbPool                  *pgxpool.Pool
+	dbPool                  *tenantPool
 }
 
 // scannable is an interface for pgx rows and row objects.
@@ -106,9 +105,9 @@ func (s *SQLStore) IsTrustedIdentity(ctx context.Context, address string, key [3
 }
 
 const (
-	getSessionQuery    = `SELECT session FROM whatsmeow_sessions WHERE business_id=$1 AND our_jid=$2 AND their_id=$3`
-	hasSessionQuery    = `SELECT true FROM whatsmeow_sessions WHERE business_id=$1 AND our_jid=$2 AND their_id=$3`
-	putSessionQuery    = `
+	getSessionQuery = `SELECT session FROM whatsmeow_sessions WHERE business_id=$1 AND our_jid=$2 AND their_id=$3`
+	hasSessionQuery = `SELECT true FROM whatsmeow_sessions WHERE business_id=$1 AND our_jid=$2 AND their_id=$3`
+	putSessionQuery = `
 		INSERT INTO whatsmeow_sessions (business_id, our_jid, their_id, session) VALUES ($1, $2, $3, $4)
 		ON CONFLICT (business_id, our_jid, their_id) DO UPDATE SET session=excluded.session
 	`
