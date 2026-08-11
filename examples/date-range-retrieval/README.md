@@ -166,9 +166,11 @@ The example can parse and display:
 
 ```bash
 go get go.mau.fi/whatsmeow
-go get github.com/mattn/go-sqlite3
 go get google.golang.org/protobuf/proto
 ```
+
+This build of the store is PostgreSQL only (pgx/pgxpool); pass the connection string
+with `-db`, e.g. `-db "postgres://user:pass@localhost:5432/whatsmeow?sslmode=disable"`.
 
 ## License
 

@@ -15,8 +15,7 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/lib/pq"
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow"
@@ -31,6 +30,8 @@ var (
 	phoneNumber = flag.String("phone", "", "Phone number in international format (e.g., +1234567890)")
 	daysAgo     = flag.Int("days", 7, "Number of days ago to retrieve messages from")
 	maxMessages = flag.Int("max", 100, "Maximum number of messages to retrieve")
+	// This build of the store is PostgreSQL only.
+	dsn = flag.String("db", "postgres://localhost/whatsmeow?sslmode=disable", "PostgreSQL connection string")
 )
 
 func main() {
@@ -42,22 +43,36 @@ func main() {
 		fmt.Println("  -phone    Phone number in international format (required)")
 		fmt.Println("  -days     Number of days ago to retrieve messages from (default: 7)")
 		fmt.Println("  -max      Maximum number of messages to retrieve (default: 100)")
+		fmt.Println("  -db       PostgreSQL connection string")
 		return
 	}
+
+	ctx := context.Background()
 
 	// Setup logging
 	log := waLog.Stdout("Main", "INFO", true)
 
 	// Initialize database container
 	dbLog := waLog.Stdout("Database", "INFO", true)
-	container, err := sqlstore.New("sqlite3", "file:whatsmeow.db?_foreign_keys=on", dbLog)
+	// Build the pool explicitly: sqlstore.New only opens it, it does not create the
+	// schema, and the migration runner needs the pool.
+	pool, err := pgxpool.New(ctx, *dsn)
 	if err != nil {
 		log.Errorf("Failed to connect to database: %v", err)
 		return
 	}
+	defer pool.Close()
+
+	if err = (&sqlstore.ClientInstance{DbPool: pool, Log: dbLog}).Upgrade(); err != nil {
+		log.Errorf("Failed to create or upgrade the database schema: %v", err)
+		return
+	}
+
+	// Empty business ID: this example is single-tenant.
+	container := sqlstore.NewContainer(pool, "", dbLog)
 
 	// Get first device (or create new one)
-	deviceStore, err := container.GetFirstDevice()
+	deviceStore, err := container.GetFirstDevice(ctx)
 	if err != nil {
 		log.Errorf("Failed to get device: %v", err)
 		return
@@ -72,7 +87,7 @@ func main() {
 		case *events.Connected:
 			log.Infof("Connected to WhatsApp")
 		case *events.PushNameSetting:
-			log.Infof("Push name set to: %s", v.Name)
+			log.Infof("Push name set to: %s", v.Action.GetName())
 		case *events.Message:
 			// Show incoming messages while waiting
 			log.Infof("Received message from %s: %v", v.Info.Sender, v.Message.GetConversation())
