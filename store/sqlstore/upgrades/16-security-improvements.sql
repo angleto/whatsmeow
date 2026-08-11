@@ -1,4 +1,11 @@
--- v12: Security and Performance Improvements for Multitenancy
+-- v16 (compatible with v8+): Security and Performance Improvements for Multitenancy
+--
+-- This file was numbered 12 until 2026-08-11, colliding with
+-- 12-privacy-token-sender-timestamp.sql. The upgrade runner keys migrations on the
+-- numeric prefix only, so the second v12 file was never applied on any upgrade path
+-- and these indexes existed only in freshly installed databases. Renumbering to 16
+-- makes existing databases pick them up; every statement is CREATE INDEX IF NOT
+-- EXISTS, so it is a no-op where they are already present.
 
 -- Add indexes on business_id for efficient tenant filtering and query performance
 CREATE INDEX IF NOT EXISTS idx_identity_keys_business ON whatsmeow_identity_keys(business_id);
