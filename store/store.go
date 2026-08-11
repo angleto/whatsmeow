@@ -233,6 +233,7 @@ type Device struct {
 	PushName     string
 
 	LIDMigrationTimestamp int64
+	CompanionMetaNonce    string
 
 	FacebookUUID uuid.UUID
 

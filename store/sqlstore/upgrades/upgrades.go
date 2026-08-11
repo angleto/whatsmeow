@@ -10,5 +10,9 @@ import (
 	"embed"
 )
 
+// FS exposes the migration files to the pgx-based upgrade runner in
+// store/sqlstore/upgrade.go. Upstream's dbutil upgrade table is not used here
+// because the multitenant store runs on pgxpool instead of database/sql.
+//
 //go:embed *.sql
 var FS embed.FS

@@ -23,9 +23,10 @@ import (
 // LatestVersion is the latest database schema version.
 // This should match the version in 00-latest-schema.sql header (v0 -> vN).
 // Must be >= the highest numbered migration file so existing DBs apply
-// migrations 13 (retry-buffer) and 14 (nct-salt); both are idempotent
-// (CREATE TABLE/INDEX IF NOT EXISTS), so re-applying on a fresh v14 install is a no-op.
-const LatestVersion = 14
+// migrations 13 (retry-buffer), 14 (nct-salt) and 15 (companion-meta-nonce); all of
+// them are idempotent (CREATE TABLE/INDEX IF NOT EXISTS, ADD COLUMN IF NOT EXISTS),
+// so re-applying on a fresh v15 install is a no-op.
+const LatestVersion = 15
 
 // migrationFile represents a SQL migration file with its version number.
 type migrationFile struct {

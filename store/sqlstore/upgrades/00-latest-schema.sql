@@ -1,4 +1,4 @@
--- v0 -> v14 (compatible with v8+): Latest schema for multitenant setup
+-- v0 -> v15 (compatible with v8+): Latest schema for multitenant setup
 CREATE TABLE IF NOT EXISTS whatsmeow_device (
   	business_id TEXT NOT NULL,
 	jid TEXT NOT NULL,
@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS whatsmeow_device (
 	push_name     TEXT NOT NULL DEFAULT '',
 
 	lid_migration_ts BIGINT NOT NULL DEFAULT 0,
+
+	companion_meta_nonce TEXT NOT NULL DEFAULT '',
 
 	PRIMARY KEY (business_id, jid)
 );
