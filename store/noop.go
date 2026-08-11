@@ -173,7 +173,7 @@ func (n *NoopStore) PutBusinessName(ctx context.Context, user types.JID, busines
 	return false, "", n.Error
 }
 
-func (n *NoopStore) PutContactName(ctx context.Context, user types.JID, fullName, firstName string) error {
+func (n *NoopStore) PutContactName(ctx context.Context, user types.JID, firstName, fullName string) error {
 	return n.Error
 }
 

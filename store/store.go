@@ -102,7 +102,11 @@ func (rpe RedactedPhoneEntry) GetMassInsertValues() [2]any {
 type ContactStore interface {
 	PutPushName(ctx context.Context, user types.JID, pushName string) (bool, string, error)
 	PutBusinessName(ctx context.Context, user types.JID, businessName string) (bool, string, error)
-	PutContactName(ctx context.Context, user types.JID, fullName, firstName string) error
+	// Note: the arguments are (firstName, fullName), matching the implementation in
+	// sqlstore and the caller in appstate.go. Upstream declares them in the opposite
+	// order here, which is only a naming slip (Go ignores parameter names) but reads
+	// as the reverse contract.
+	PutContactName(ctx context.Context, user types.JID, firstName, fullName string) error
 	PutAllContactNames(ctx context.Context, contacts []ContactEntry) error
 	PutManyRedactedPhones(ctx context.Context, entries []RedactedPhoneEntry) error
 	GetContact(ctx context.Context, user types.JID) (types.ContactInfo, error)
@@ -215,8 +219,8 @@ type AllStores interface {
 }
 
 type Device struct {
-	Log                   waLog.Logger
-	DatabaseErrorHandler  func(device *Device, action string, attemptIndex int, err error) (retry bool)
+	Log                  waLog.Logger
+	DatabaseErrorHandler func(device *Device, action string, attemptIndex int, err error) (retry bool)
 
 	NoiseKey       *keys.KeyPair
 	IdentityKey    *keys.KeyPair
