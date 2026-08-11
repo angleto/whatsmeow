@@ -23,8 +23,8 @@ import (
 )
 
 var (
-	ErrTenantNotFound    = errors.New("tenant not found")
-	ErrTenantNotRunning  = errors.New("tenant not running")
+	ErrTenantNotFound      = errors.New("tenant not found")
+	ErrTenantNotRunning    = errors.New("tenant not running")
 	ErrTenantAlreadyExists = errors.New("tenant already exists")
 )
 
@@ -72,7 +72,7 @@ type TenantCoordinator struct {
 
 // CoordinatorConfig configures the tenant coordinator.
 type CoordinatorConfig struct {
-	Hostname         string        // Hostname of this instance
+	Hostname            string        // Hostname of this instance
 	HealthCheckInterval time.Duration // How often to check tenant health
 }
 

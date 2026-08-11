@@ -41,9 +41,9 @@ type ComponentHealth struct {
 
 // HealthReport represents the overall health status.
 type HealthReport struct {
-	Status     Status                      `json:"status"`
-	Timestamp  time.Time                   `json:"timestamp"`
-	Components map[string]ComponentHealth  `json:"components"`
+	Status     Status                     `json:"status"`
+	Timestamp  time.Time                  `json:"timestamp"`
+	Components map[string]ComponentHealth `json:"components"`
 }
 
 // Checker defines the interface for health checkers.
@@ -371,4 +371,3 @@ func (lc *LivenessChecker) Check(ctx context.Context) ComponentHealth {
 		Timestamp: time.Now(),
 	}
 }
-
