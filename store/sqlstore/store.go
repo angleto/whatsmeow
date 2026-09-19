@@ -952,6 +952,9 @@ func (s *SQLStore) PutMessageSecrets(ctx context.Context, inserts []store.Messag
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	for _, insert := range inserts {
+		if insert.Chat.IsEmpty() || insert.Sender.IsEmpty() || insert.ID == "" || len(insert.Secret) == 0 {
+			continue
+		}
 		if _, err = tx.Exec(ctx, putMsgSecret, s.businessId, s.JID, insert.Chat.ToNonAD(), insert.Sender.ToNonAD(), insert.ID, insert.Secret); err != nil {
 			return err
 		}
