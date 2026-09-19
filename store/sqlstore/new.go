@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 

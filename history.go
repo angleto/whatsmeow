@@ -192,7 +192,7 @@ func (cli *Client) requestHistoryBatch(ctx context.Context, anchorMsg *types.Mes
 		if hs, ok := evt.(*events.HistorySync); ok {
 			// Only process if it contains conversations for our chat
 			for _, conv := range hs.Data.GetConversations() {
-				if conv.GetId() == anchorMsg.Chat.String() {
+				if conv.GetID() == anchorMsg.Chat.String() {
 					select {
 					case historySyncChan <- hs:
 					default:
@@ -241,7 +241,7 @@ func (cli *Client) parseHistorySyncMessages(historySync *events.HistorySync, cha
 
 	// Find the conversation for this chat
 	for _, conv := range historySync.Data.GetConversations() {
-		if conv.GetId() != chatJID.String() {
+		if conv.GetID() != chatJID.String() {
 			continue
 		}
 

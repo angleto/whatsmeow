@@ -129,8 +129,12 @@ const rlsTenantConnKey = "whatsmeow.current_business_id"
 func EnableTenantRLS(cfg *pgxpool.Config) {
 	previousPrepareConn := cfg.PrepareConn
 	// pgx ignores BeforeAcquire entirely once PrepareConn is set, so fold any existing
-	// one into the new hook and clear it rather than leaving it as dead code.
+	// one into the new hook and clear it rather than leaving it as dead code. Reading
+	// the deprecated field is the whole point here: a caller that set it before calling
+	// EnableTenantRLS would otherwise have its hook silently dropped.
+	//lint:ignore SA1019 deliberate: preserving a caller's deprecated hook, see above
 	previousBeforeAcquire := cfg.BeforeAcquire
+	//lint:ignore SA1019 deliberate: clearing the hook pgx would ignore anyway, see above
 	cfg.BeforeAcquire = nil
 
 	cfg.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {

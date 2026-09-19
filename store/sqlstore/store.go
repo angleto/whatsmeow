@@ -229,16 +229,6 @@ func (s *SQLStore) deleteAllSessions(ctx context.Context, phone string) error {
 	return err
 }
 
-func (s *SQLStore) deleteAllSenderKeys(ctx context.Context, phone string) error {
-	_, err := s.dbPool.Exec(ctx, deleteAllSenderKeysQuery, s.businessId, s.JID, phone+":%")
-	return err
-}
-
-func (s *SQLStore) deleteAllIdentityKeys(ctx context.Context, phone string) error {
-	_, err := s.dbPool.Exec(ctx, deleteAllIdentityKeysQuery, s.businessId, s.JID, phone+":%")
-	return err
-}
-
 func (s *SQLStore) DeleteSession(ctx context.Context, address string) error {
 	_, err := s.dbPool.Exec(ctx, deleteSessionQuery, s.businessId, s.JID, address)
 	return err

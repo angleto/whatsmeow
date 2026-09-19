@@ -11,11 +11,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-
-	"github.com/jackc/pgx/v5/pgxpool"
 	mathRand "math/rand/v2"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mau.fi/util/random"
 
 	"go.mau.fi/whatsmeow/proto/waAdv"
